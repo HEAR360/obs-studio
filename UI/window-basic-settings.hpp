@@ -240,6 +240,7 @@ private:
 
 	void FillSimpleRecordingValues();
 	void FillSimpleStreamingValues();
+	void FillAudioMonitoringDevices();
 
 	void RecalcOutputResPixels(const char *resText);
 
@@ -255,6 +256,7 @@ private slots:
 	void on_advOutFFPathBrowse_clicked();
 	void on_advOutEncoder_currentIndexChanged(int idx);
 	void on_advOutRecEncoder_currentIndexChanged(int idx);
+	void on_advOutFFIgnoreCompat_stateChanged(int state);
 	void on_advOutFFFormat_currentIndexChanged(int idx);
 	void on_advOutFFAEncoder_currentIndexChanged(int idx);
 	void on_advOutFFVEncoder_currentIndexChanged(int idx);
@@ -284,11 +286,15 @@ private slots:
 
 	void UpdateStreamDelayEstimate();
 
+	void UpdateAutomaticReplayBufferCheckboxes();
+
 	void AdvOutRecCheckWarnings();
 
 	void SimpleRecordingQualityChanged();
 	void SimpleRecordingEncoderChanged();
 	void SimpleRecordingQualityLosslessWarning(int idx);
+
+	void SimpleReplayBufferChanged();
 
 	void SimpleStreamingEncoderChanged();
 

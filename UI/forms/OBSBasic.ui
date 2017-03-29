@@ -608,6 +608,9 @@
                <height>0</height>
               </size>
              </property>
+             <property name="accessibleName">
+              <string>Transition</string>
+             </property>
             </widget>
            </item>
            <item>
@@ -754,10 +757,16 @@
                <property name="text">
                 <string>Basic.TransitionDuration</string>
                </property>
+               <property name="buddy">
+                <cstring>transitionDuration</cstring>
+               </property>
               </widget>
              </item>
              <item>
               <widget class="QSpinBox" name="transitionDuration">
+               <property name="accessibleName">
+                <string>Basic.TransitionDuration</string>
+               </property>
                <property name="suffix">
                 <string>ms</string>
                </property>
@@ -850,6 +859,8 @@
       <string>Basic.MainMenu.Edit.Transform</string>
      </property>
      <addaction name="actionEditTransform"/>
+     <addaction name="actionCopyTransform"/>
+     <addaction name="actionPasteTransform"/>
      <addaction name="actionResetTransform"/>
      <addaction name="separator"/>
      <addaction name="actionRotate90CW"/>
@@ -881,6 +892,51 @@
      <addaction name="actionScaleCanvas"/>
      <addaction name="actionScaleOutput"/>
     </widget>
+    <action name="actionCopySource">
+     <property name="text">
+      <string>Copy</string>
+     </property>
+     <property name="shortcut">
+      <string>Ctrl+C</string>
+     </property>
+    </action>
+    <action name="actionPasteRef">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="text">
+      <string>PasteReference</string>
+     </property>
+     <property name="iconText">
+      <string>PasteReference</string>
+     </property>
+     <property name="toolTip">
+      <string>PasteReference</string>
+     </property>
+     <property name="shortcut">
+      <string>Ctrl+V</string>
+     </property>
+    </action>
+    <action name="actionCopyFilters">
+     <property name="text">
+      <string>Copy.Filters</string>
+     </property>
+    </action>
+    <action name="actionPasteFilters">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="text">
+      <string>Paste.Filters</string>
+     </property>
+    </action>
+    <addaction name="actionCopySource"/>
+    <addaction name="actionPasteRef"/>
+    <addaction name="actionPasteDup"/>
+    <addaction name="separator"/>
+    <addaction name="actionCopyFilters"/>
+    <addaction name="actionPasteFilters"/>
+    <addaction name="separator"/>
     <addaction name="transformMenu"/>
     <addaction name="orderMenu"/>
     <addaction name="scalingMenu"/>
@@ -896,6 +952,8 @@
     <addaction name="actionDupProfile"/>
     <addaction name="actionRenameProfile"/>
     <addaction name="actionRemoveProfile"/>
+    <addaction name="actionImportProfile"/>
+    <addaction name="actionExportProfile"/>
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="sceneCollectionMenu">
@@ -906,6 +964,8 @@
     <addaction name="actionDupSceneCollection"/>
     <addaction name="actionRenameSceneCollection"/>
     <addaction name="actionRemoveSceneCollection"/>
+    <addaction name="actionImportSceneCollection"/>
+    <addaction name="actionExportSceneCollection"/>
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="viewMenu">
@@ -1129,6 +1189,19 @@
     <string>Basic.MainMenu.Edit.Transform.EditTransform</string>
    </property>
   </action>
+  <action name="actionCopyTransform">
+   <property name="text">
+    <string>Basic.MainMenu.Edit.Transform.CopyTransform</string>
+   </property>
+  </action>
+  <action name="actionPasteTransform">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Basic.MainMenu.Edit.Transform.PasteTransform</string>
+   </property>
+  </action>
   <action name="actionRotate90CW">
    <property name="text">
     <string>Basic.MainMenu.Edit.Transform.Rotate90CW</string>
@@ -1258,6 +1331,16 @@
     <string>Remove</string>
    </property>
   </action>
+  <action name="actionImportSceneCollection">
+   <property name="text">
+    <string>Import</string>
+   </property>
+  </action>
+  <action name="actionExportSceneCollection">
+   <property name="text">
+    <string>Export</string>
+   </property>
+  </action>
   <action name="actionNewProfile">
    <property name="text">
     <string>New</string>
@@ -1276,6 +1359,16 @@
   <action name="actionRemoveProfile">
    <property name="text">
     <string>Remove</string>
+   </property>
+  </action>
+  <action name="actionImportProfile">
+   <property name="text">
+    <string>Import</string>
+   </property>
+  </action>
+  <action name="actionExportProfile">
+   <property name="text">
+    <string>Export</string>
    </property>
   </action>
   <action name="actionShowSettingsFolder">
@@ -1359,6 +1452,11 @@
    </property>
    <property name="text">
     <string>Basic.MainMenu.Edit.Scale.Output</string>
+   </property>
+  </action>
+  <action name="actionPasteDup">
+   <property name="text">
+    <string>PasteDuplicate</string>
    </property>
   </action>
  </widget>

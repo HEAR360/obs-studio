@@ -131,6 +131,9 @@ static void *libfdk_create(obs_data_t *settings, obs_encoder_t *encoder)
 	case 6:
 		mode = MODE_1_2_2_1;
 		break;
+	case 8:
+		mode = MODE_2_2_2_2;
+		break;
 	default:
 		blog(LOG_ERROR, "Invalid channel count");
 		goto fail;

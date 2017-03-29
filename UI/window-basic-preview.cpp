@@ -380,8 +380,7 @@ void OBSBasicPreview::GetStretchHandleData(const vec2 &pos)
 
 void OBSBasicPreview::keyPressEvent(QKeyEvent *event)
 {
-	if (locked ||
-	    GetScalingMode() == ScalingMode::Window ||
+	if (GetScalingMode() == ScalingMode::Window ||
 	    event->isAutoRepeat()) {
 		OBSQTDisplay::keyPressEvent(event);
 		return;
@@ -416,6 +415,19 @@ void OBSBasicPreview::keyReleaseEvent(QKeyEvent *event)
 
 void OBSBasicPreview::mousePressEvent(QMouseEvent *event)
 {
+	if (scrollMode && GetScalingMode() != ScalingMode::Window &&
+	    event->button() == Qt::LeftButton) {
+		setCursor(Qt::ClosedHandCursor);
+		scrollingFrom.x = event->x();
+		scrollingFrom.y = event->y();
+		return;
+	}
+
+	if (event->button() == Qt::RightButton) {
+		scrollMode = false;
+		setCursor(Qt::ArrowCursor);
+	}
+
 	if (locked) {
 		OBSQTDisplay::mousePressEvent(event);
 		return;
@@ -429,13 +441,6 @@ void OBSBasicPreview::mousePressEvent(QMouseEvent *event)
 	bool altDown = (modifiers & Qt::AltModifier);
 
 	OBSQTDisplay::mousePressEvent(event);
-
-	if (scrollMode && GetScalingMode() != ScalingMode::Window) {
-		setCursor(Qt::ClosedHandCursor);
-		scrollingFrom.x = event->x();
-		scrollingFrom.y = event->y();
-		return;
-	}
 
 	if (event->button() != Qt::LeftButton &&
 	    event->button() != Qt::RightButton)
@@ -500,13 +505,13 @@ void OBSBasicPreview::ProcessClick(const vec2 &pos)
 
 void OBSBasicPreview::mouseReleaseEvent(QMouseEvent *event)
 {
+	if (scrollMode)
+		setCursor(Qt::OpenHandCursor);
+
 	if (locked) {
 		OBSQTDisplay::mouseReleaseEvent(event);
 		return;
 	}
-
-	if (scrollMode)
-		setCursor(Qt::OpenHandCursor);
 
 	if (mouseDown) {
 		vec2 pos = GetMouseEventPos(event);
@@ -735,18 +740,35 @@ void OBSBasicPreview::ClampAspect(vec3 &tl, vec3 &br, vec2 &size,
 	    stretchHandle == ItemHandle::TopRight   ||
 	    stretchHandle == ItemHandle::BottomLeft ||
 	    stretchHandle == ItemHandle::BottomRight) {
-		if (aspect < baseAspect)
-			size.x = size.y * baseAspect;
-		else
-			size.y = size.x / baseAspect;
+		if (aspect < baseAspect) {
+			if ((size.y >= 0.0f && size.x >= 0.0f) ||
+			    (size.y <= 0.0f && size.x <= 0.0f))
+				size.x = size.y * baseAspect;
+			else
+				size.x = size.y * baseAspect * -1.0f;
+		} else {
+			if ((size.y >= 0.0f && size.x >= 0.0f) ||
+			    (size.y <= 0.0f && size.x <= 0.0f))
+				size.y = size.x / baseAspect;
+			else
+				size.y = size.x / baseAspect * -1.0f;
+		}
 
 	} else if (stretchHandle == ItemHandle::TopCenter ||
 	           stretchHandle == ItemHandle::BottomCenter) {
-		size.x = size.y * baseAspect;
+		if ((size.y >= 0.0f && size.x >= 0.0f) ||
+		    (size.y <= 0.0f && size.x <= 0.0f))
+			size.x = size.y * baseAspect;
+		else
+			size.x = size.y * baseAspect * -1.0f;
 
 	} else if (stretchHandle == ItemHandle::CenterLeft ||
 	           stretchHandle == ItemHandle::CenterRight) {
-		size.y = size.x / baseAspect;
+		if ((size.y >= 0.0f && size.x >= 0.0f) ||
+		    (size.y <= 0.0f && size.x <= 0.0f))
+			size.y = size.x / baseAspect;
+		else
+			size.y = size.x / baseAspect * -1.0f;
 	}
 
 	size.x = std::round(size.x);
@@ -998,9 +1020,6 @@ void OBSBasicPreview::StretchItem(const vec2 &pos)
 
 void OBSBasicPreview::mouseMoveEvent(QMouseEvent *event)
 {
-	if (locked)
-		return;
-
 	if (scrollMode && event->buttons() == Qt::LeftButton) {
 		scrollingOffset.x += event->x() - scrollingFrom.x;
 		scrollingOffset.y += event->y() - scrollingFrom.y;
@@ -1009,6 +1028,9 @@ void OBSBasicPreview::mouseMoveEvent(QMouseEvent *event)
 		emit DisplayResized();
 		return;
 	}
+
+	if (locked)
+		return;
 
 	if (mouseDown) {
 		vec2 pos = GetMouseEventPos(event);

@@ -174,7 +174,7 @@ bool obs_source_init(struct obs_source *source)
 	source->control = bzalloc(sizeof(obs_weak_source_t));
 	source->deinterlace_top_first = true;
 	source->control->source = source;
-	source->audio_mixers = 0xF;
+	source->audio_mixers = 0xFF;
 
 	if (is_audio_source(source)) {
 		pthread_mutex_lock(&obs->data.audio_sources_mutex);
@@ -365,6 +365,27 @@ obs_source_t *obs_source_create_private(const char *id, const char *name,
 	return obs_source_create_internal(id, name, settings, NULL, true);
 }
 
+static char *get_new_filter_name(obs_source_t *dst, const char *name)
+{
+	struct dstr new_name = {0};
+	int inc = 0;
+
+	dstr_copy(&new_name, name);
+
+	for (;;) {
+		obs_source_t *existing_filter = obs_source_get_filter_by_name(
+				dst, new_name.array);
+		if (!existing_filter)
+			break;
+
+		obs_source_release(existing_filter);
+
+		dstr_printf(&new_name, "%s %d", name, ++inc + 1);
+	}
+
+	return new_name.array;
+}
+
 static void duplicate_filters(obs_source_t *dst, obs_source_t *src,
 		bool private)
 {
@@ -380,15 +401,28 @@ static void duplicate_filters(obs_source_t *dst, obs_source_t *src,
 
 	for (size_t i = filters.num; i > 0; i--) {
 		obs_source_t *src_filter = filters.array[i - 1];
-		obs_source_t *dst_filter = obs_source_duplicate(src_filter,
-				src_filter->context.name, private);
+		char *new_name = get_new_filter_name(dst,
+				src_filter->context.name);
 
+		obs_source_t *dst_filter = obs_source_duplicate(src_filter,
+				new_name, private);
+
+		bfree(new_name);
 		obs_source_filter_add(dst, dst_filter);
 		obs_source_release(dst_filter);
 		obs_source_release(src_filter);
 	}
 
 	da_free(filters);
+}
+
+void obs_source_copy_filters(obs_source_t *dst, obs_source_t *src)
+{
+	duplicate_filters(dst, src, dst->context.private ?
+					OBS_SCENE_DUP_PRIVATE_COPY :
+					OBS_SCENE_DUP_COPY);
+
+	obs_source_release(src);
 }
 
 obs_source_t *obs_source_duplicate(obs_source_t *source,
@@ -502,6 +536,8 @@ void obs_source_destroy(struct obs_source *source)
 		source->info.destroy(source->context.data);
 		source->context.data = NULL;
 	}
+
+	audio_monitor_destroy(source->monitor);
 
 	obs_hotkey_unregister(source->push_to_talk_key);
 	obs_hotkey_unregister(source->push_to_mute_key);
@@ -1050,7 +1086,7 @@ static void handle_ts_jump(obs_source_t *source, uint64_t expected,
 }
 
 static void source_signal_audio_data(obs_source_t *source,
-		struct audio_data *in, bool muted)
+		const struct audio_data *in, bool muted)
 {
 	pthread_mutex_lock(&source->audio_cb_mutex);
 
@@ -1184,6 +1220,7 @@ static void source_output_audio_data(obs_source_t *source,
 			in.timestamp = source->next_audio_ts_min;
 	}
 
+	source->last_audio_ts = in.timestamp;
 	source->next_audio_ts_min = in.timestamp +
 		conv_frames_to_time(sample_rate, in.frames);
 
@@ -1226,14 +1263,16 @@ static void source_output_audio_data(obs_source_t *source,
 		source->last_sync_offset = sync_offset;
 	}
 
-	if (push_back && source->audio_ts)
-		source_output_audio_push_back(source, &in);
-	else
-		source_output_audio_place(source, &in);
+	if (source->monitoring_type != OBS_MONITORING_TYPE_MONITOR_ONLY) {
+		if (push_back && source->audio_ts)
+			source_output_audio_push_back(source, &in);
+		else
+			source_output_audio_place(source, &in);
+	}
 
 	pthread_mutex_unlock(&source->audio_buf_mutex);
 
-	source_signal_audio_data(source, &in, source_muted(source, os_time));
+	source_signal_audio_data(source, data, source_muted(source, os_time));
 }
 
 enum convert_type {
@@ -1879,10 +1918,9 @@ void obs_source_filter_add(obs_source_t *source, obs_source_t *filter)
 
 	signal_handler_signal(source->context.signals, "filter_add", &cd);
 
-	if (source && filter)
-		blog(LOG_DEBUG, "- filter '%s' (%s) added to source '%s'",
-				filter->context.name, filter->info.id,
-				source->context.name);
+	blog(LOG_DEBUG, "- filter '%s' (%s) added to source '%s'",
+			filter->context.name, filter->info.id,
+			source->context.name);
 }
 
 static bool obs_source_filter_remove_refless(obs_source_t *source,
@@ -1915,10 +1953,9 @@ static bool obs_source_filter_remove_refless(obs_source_t *source,
 
 	signal_handler_signal(source->context.signals, "filter_remove", &cd);
 
-	if (source && filter)
-		blog(LOG_DEBUG, "- filter '%s' (%s) removed from source '%s'",
-				filter->context.name, filter->info.id,
-				source->context.name);
+	blog(LOG_DEBUG, "- filter '%s' (%s) removed from source '%s'",
+			filter->context.name, filter->info.id,
+			source->context.name);
 
 	if (filter->info.filter_remove)
 		filter->info.filter_remove(filter->context.data,
@@ -2098,6 +2135,41 @@ static inline void copy_frame_data_plane(struct obs_source_frame *dst,
 				dst->linesize[plane] * lines);
 }
 
+static void copy_frame_data_line_y800(uint32_t *dst, uint8_t *src, uint8_t *end)
+{
+	while (src < end) {
+		register uint32_t val = *(src++);
+		val |= (val << 8);
+		val |= (val << 16);
+		*(dst++) = val;
+	}
+}
+
+static inline void copy_frame_data_y800(struct obs_source_frame *dst,
+		const struct obs_source_frame *src)
+{
+	uint32_t *ptr_dst;
+	uint8_t  *ptr_src;
+	uint8_t  *src_end;
+
+	if ((src->linesize[0] * 4) != dst->linesize[0]) {
+		for (uint32_t cy = 0; cy < src->height; cy++) {
+			ptr_dst = (uint32_t*)
+				(dst->data[0] + cy * dst->linesize[0]);
+			ptr_src = (src->data[0] + cy * src->linesize[0]);
+			src_end = ptr_src + src->width;
+
+			copy_frame_data_line_y800(ptr_dst, ptr_src, src_end);
+		}
+	} else {
+		ptr_dst = (uint32_t*)dst->data[0];
+		ptr_src = (uint8_t *)src->data[0];
+		src_end = ptr_src + src->height * src->linesize[0];
+
+		copy_frame_data_line_y800(ptr_dst, ptr_src, src_end);
+	}
+}
+
 static void copy_frame_data(struct obs_source_frame *dst,
 		const struct obs_source_frame *src)
 {
@@ -2111,7 +2183,7 @@ static void copy_frame_data(struct obs_source_frame *dst,
 		memcpy(dst->color_range_max, src->color_range_max, size);
 	}
 
-	switch (dst->format) {
+	switch (src->format) {
 	case VIDEO_FORMAT_I420:
 		copy_frame_data_plane(dst, src, 0, dst->height);
 		copy_frame_data_plane(dst, src, 1, dst->height/2);
@@ -2132,12 +2204,16 @@ static void copy_frame_data(struct obs_source_frame *dst,
 	case VIDEO_FORMAT_YVYU:
 	case VIDEO_FORMAT_YUY2:
 	case VIDEO_FORMAT_UYVY:
-	case VIDEO_FORMAT_Y800:
 	case VIDEO_FORMAT_NONE:
 	case VIDEO_FORMAT_RGBA:
 	case VIDEO_FORMAT_BGRA:
 	case VIDEO_FORMAT_BGRX:
 		copy_frame_data_plane(dst, src, 0, dst->height);
+		break;
+
+	case VIDEO_FORMAT_Y800:
+		copy_frame_data_y800(dst, src);
+		break;
 	}
 }
 
@@ -2218,8 +2294,12 @@ static inline struct obs_source_frame *cache_video(struct obs_source *source,
 
 	if (!new_frame) {
 		struct async_frame new_af;
+		enum video_format format = frame->format;
 
-		new_frame = obs_source_frame_create(frame->format,
+		if (format == VIDEO_FORMAT_Y800)
+			format = VIDEO_FORMAT_BGRX;
+
+		new_frame = obs_source_frame_create(format,
 				frame->width, frame->height);
 		new_af.frame = new_frame;
 		new_af.used = true;
@@ -2470,6 +2550,7 @@ static bool ready_async_frame(obs_source_t *source, uint64_t sys_time)
 			next_frame = source->async_frames.array[0];
 		}
 
+		source->last_frame_ts = next_frame->timestamp;
 		return true;
 	}
 
@@ -2925,19 +3006,19 @@ struct source_enum_data {
 	void *param;
 };
 
-static void enum_source_tree_callback(obs_source_t *parent, obs_source_t *child,
-		void *param)
+static void enum_source_active_tree_callback(obs_source_t *parent,
+		obs_source_t *child, void *param)
 {
 	struct source_enum_data *data = param;
 	bool is_transition = child->info.type == OBS_SOURCE_TYPE_TRANSITION;
 
 	if (is_transition)
 		obs_transition_enum_sources(child,
-				enum_source_tree_callback, param);
+				enum_source_active_tree_callback, param);
 	if (child->info.enum_active_sources) {
 		if (child->context.data) {
 			child->info.enum_active_sources(child->context.data,
-					enum_source_tree_callback, data);
+					enum_source_active_tree_callback, data);
 		}
 	}
 
@@ -2984,11 +3065,67 @@ void obs_source_enum_active_tree(obs_source_t *source,
 	obs_source_addref(source);
 
 	if (source->info.type == OBS_SOURCE_TYPE_TRANSITION)
-		obs_transition_enum_sources(source, enum_source_tree_callback,
-				&data);
+		obs_transition_enum_sources(source,
+				enum_source_active_tree_callback, &data);
 	if (source->info.enum_active_sources)
 		source->info.enum_active_sources(source->context.data,
-				enum_source_tree_callback, &data);
+				enum_source_active_tree_callback, &data);
+
+	obs_source_release(source);
+}
+
+static void enum_source_full_tree_callback(obs_source_t *parent,
+		obs_source_t *child, void *param)
+{
+	struct source_enum_data *data = param;
+	bool is_transition = child->info.type == OBS_SOURCE_TYPE_TRANSITION;
+
+	if (is_transition)
+		obs_transition_enum_sources(child,
+				enum_source_full_tree_callback, param);
+	if (child->info.enum_all_sources) {
+		if (child->context.data) {
+			child->info.enum_active_sources(child->context.data,
+					enum_source_full_tree_callback, data);
+		}
+	} else if (child->info.enum_active_sources) {
+		if (child->context.data) {
+			child->info.enum_active_sources(child->context.data,
+					enum_source_full_tree_callback, data);
+		}
+	}
+
+	data->enum_callback(parent, child, data->param);
+}
+
+static void obs_source_enum_full_tree(obs_source_t *source,
+		obs_source_enum_proc_t enum_callback,
+		void *param)
+{
+	struct source_enum_data data = {enum_callback, param};
+	bool is_transition;
+
+	if (!data_valid(source, "obs_source_enum_active_tree"))
+		return;
+
+	is_transition = source->info.type == OBS_SOURCE_TYPE_TRANSITION;
+	if (!is_transition && !source->info.enum_active_sources)
+		return;
+
+	obs_source_addref(source);
+
+	if (source->info.type == OBS_SOURCE_TYPE_TRANSITION)
+		obs_transition_enum_sources(source,
+				enum_source_full_tree_callback, &data);
+
+	if (source->info.enum_all_sources) {
+		source->info.enum_all_sources(source->context.data,
+				enum_source_full_tree_callback, &data);
+
+	} else if (source->info.enum_active_sources) {
+		source->info.enum_active_sources(source->context.data,
+				enum_source_full_tree_callback, &data);
+	}
 
 	obs_source_release(source);
 }
@@ -3020,7 +3157,7 @@ bool obs_source_add_active_child(obs_source_t *parent, obs_source_t *child)
 		return false;
 	}
 
-	obs_source_enum_active_tree(child, check_descendant, &info);
+	obs_source_enum_full_tree(child, check_descendant, &info);
 	if (info.exists)
 		return false;
 
@@ -3790,4 +3927,39 @@ void obs_source_remove_audio_capture_callback(obs_source_t *source,
 	pthread_mutex_lock(&source->audio_cb_mutex);
 	da_erase_item(source->audio_cb_list, &info);
 	pthread_mutex_unlock(&source->audio_cb_mutex);
+}
+
+void obs_source_set_monitoring_type(obs_source_t *source,
+		enum obs_monitoring_type type)
+{
+	bool was_on;
+	bool now_on;
+
+	if (!obs_source_valid(source, "obs_source_set_monitoring_type"))
+		return;
+	if (source->info.output_flags & OBS_SOURCE_DO_NOT_MONITOR)
+		return;
+	if (source->monitoring_type == type)
+		return;
+
+	was_on = source->monitoring_type != OBS_MONITORING_TYPE_NONE;
+	now_on = type != OBS_MONITORING_TYPE_NONE;
+
+	if (was_on != now_on) {
+		if (!was_on) {
+			source->monitor = audio_monitor_create(source);
+		} else {
+			audio_monitor_destroy(source->monitor);
+			source->monitor = NULL;
+		}
+	}
+
+	source->monitoring_type = type;
+}
+
+enum obs_monitoring_type obs_source_get_monitoring_type(
+		const obs_source_t *source)
+{
+	return obs_source_valid(source, "obs_source_get_monitoring_type") ?
+		source->monitoring_type : OBS_MONITORING_TYPE_NONE;
 }

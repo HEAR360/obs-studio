@@ -38,6 +38,7 @@
 
 #include <QPointer>
 
+class QMessageBox;
 class QListWidgetItem;
 class VolControl;
 class QNetworkReply;
@@ -86,6 +87,7 @@ class OBSBasic : public OBSMainWindow {
 	friend class OBSBasicPreview;
 	friend class OBSBasicStatusBar;
 	friend class OBSBasicSourceSelect;
+	friend class OBSBasicSettings;
 	friend struct OBSStudioAPI;
 
 	enum class MoveDir {
@@ -109,10 +111,17 @@ private:
 
 	std::vector<OBSSignal> signalHandlers;
 
+	std::vector<std::string> projectorArray;
+	std::vector<int> previewProjectorArray;
+
 	bool loaded = false;
 	long disableSaving = 1;
 	bool projectChanged = false;
 	bool previewEnabled = true;
+
+	const char *copyString;
+	const char *copyFiltersString;
+	bool copyVisible = true;
 
 	QPointer<QThread> updateCheckThread;
 	QPointer<QThread> logUploadThread;
@@ -130,6 +139,7 @@ private:
 	std::unique_ptr<BasicOutputHandler> outputHandler;
 	bool streamingStopping = false;
 	bool recordingStopping = false;
+	bool replayBufferStopping = false;
 
 	gs_vertbuffer_t *box = nullptr;
 	gs_vertbuffer_t *boxLeft = nullptr;
@@ -151,13 +161,15 @@ private:
 
 	QPointer<QMenu> startStreamMenu;
 
+	QPointer<QPushButton> replayBufferButton;
+
 	QPointer<QSystemTrayIcon> trayIcon;
 	QPointer<QAction>         sysTrayStream;
 	QPointer<QAction>         sysTrayRecord;
+	QPointer<QAction>         sysTrayReplayBuffer;
 	QPointer<QAction>         showHide;
 	QPointer<QAction>         exit;
 	QPointer<QMenu>           trayMenu;
-	bool          disableHiding = false;
 
 	void          DrawBackdrop(float cx, float cy);
 
@@ -192,7 +204,7 @@ private:
 	bool          QueryRemoveSource(obs_source_t *source);
 
 	void          TimedCheckForUpdates();
-	void          CheckForUpdates();
+	void          CheckForUpdates(bool manualUpdate);
 
 	void GetFPSCommon(uint32_t &num, uint32_t &den) const;
 	void GetFPSInteger(uint32_t &num, uint32_t &den) const;
@@ -244,7 +256,8 @@ private:
 
 	QListWidgetItem *GetTopSelectedSourceItem();
 
-	obs_hotkey_pair_id streamingHotkeys, recordingHotkeys;
+	obs_hotkey_pair_id streamingHotkeys, recordingHotkeys,
+	                   replayBufHotkeys;
 	obs_hotkey_id forceStreamingStopHotkey;
 
 	void InitDefaultTransitions();
@@ -313,6 +326,25 @@ private:
 	void dragMoveEvent(QDragMoveEvent *event) override;
 	void dropEvent(QDropEvent *event) override;
 
+	void ReplayBufferClicked();
+
+	bool sysTrayMinimizeToTray();
+
+	void EnumDialogs();
+
+	QList<QDialog*> visDialogs;
+	QList<QDialog*> modalDialogs;
+	QList<QMessageBox*> visMsgBoxes;
+
+	QList<QPoint> visDlgPositions;
+
+	obs_data_array_t *SaveProjectors();
+	void LoadSavedProjectors(obs_data_array_t *savedProjectors);
+
+	obs_data_array_t *SavePreviewProjectors();
+	void LoadSavedPreviewProjectors(
+		obs_data_array_t *savedPreviewProjectors);
+
 public slots:
 	void StartStreaming();
 	void StopStreaming();
@@ -331,6 +363,13 @@ public slots:
 	void RecordingStart();
 	void RecordStopping();
 	void RecordingStop(int code);
+
+	void StartReplayBuffer();
+	void StopReplayBuffer();
+
+	void ReplayBufferStart();
+	void ReplayBufferStopping();
+	void ReplayBufferStop(int code);
 
 	void SaveProjectDeferred();
 	void SaveProject();
@@ -376,15 +415,14 @@ private slots:
 	void IconActivated(QSystemTrayIcon::ActivationReason reason);
 	void SetShowing(bool showing);
 
-	inline void ToggleShowHide()
-	{
-		bool showing = isVisible();
-		if (disableHiding && showing)
-			return;
-		if (showing)
-			CloseDialogs();
-		SetShowing(!showing);
-	}
+	void ToggleShowHide();
+
+	void on_actionCopySource_triggered();
+	void on_actionPasteRef_triggered();
+	void on_actionPasteDup_triggered();
+
+	void on_actionCopyFilters_triggered();
+	void on_actionPasteFilters_triggered();
 
 private:
 	/* OBS Callbacks */
@@ -465,6 +503,9 @@ public:
 	void SystemTrayInit();
 	void SystemTray(bool firstStarted);
 
+	void OpenSavedProjectors();
+	void RemoveSavedProjectors(int monitor);
+
 protected:
 	virtual void closeEvent(QCloseEvent *event) override;
 	virtual void changeEvent(QEvent *event) override;
@@ -483,6 +524,8 @@ private slots:
 	void on_actionCheckForUpdates_triggered();
 
 	void on_actionEditTransform_triggered();
+	void on_actionCopyTransform_triggered();
+	void on_actionPasteTransform_triggered();
 	void on_actionRotate90CW_triggered();
 	void on_actionRotate90CCW_triggered();
 	void on_actionRotate180_triggered();
@@ -535,11 +578,15 @@ private slots:
 	void on_actionDupSceneCollection_triggered();
 	void on_actionRenameSceneCollection_triggered();
 	void on_actionRemoveSceneCollection_triggered();
+	void on_actionImportSceneCollection_triggered();
+	void on_actionExportSceneCollection_triggered();
 
 	void on_actionNewProfile_triggered();
 	void on_actionDupProfile_triggered();
 	void on_actionRenameProfile_triggered();
 	void on_actionRemoveProfile_triggered();
+	void on_actionImportProfile_triggered();
+	void on_actionExportProfile_triggered();
 
 	void on_actionShowSettingsFolder_triggered();
 	void on_actionShowProfileFolder_triggered();
@@ -559,7 +606,7 @@ private slots:
 
 	void logUploadFinished(const QString &text, const QString &error);
 
-	void updateFileFinished(const QString &text, const QString &error);
+	void updateCheckFinished();
 
 	void AddSourceFromAction();
 
