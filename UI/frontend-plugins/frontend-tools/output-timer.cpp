@@ -22,6 +22,8 @@ OutputTimer::OutputTimer(QWidget *parent)
 		SLOT(StreamingTimerButton()));
 	QObject::connect(ui->outputTimerRecord, SIGNAL(clicked()), this,
 		SLOT(RecordingTimerButton()));
+	QObject::connect(ui->buttonBox->button(QDialogButtonBox::Close),
+		SIGNAL(clicked()), this, SLOT(hide()));
 
 	streamingTimer = new QTimer(this);
 	streamingTimerDisplay = new QTimer(this);
@@ -38,11 +40,13 @@ void OutputTimer::closeEvent(QCloseEvent*)
 void OutputTimer::StreamingTimerButton()
 {
 	if (!obs_frontend_streaming_active()) {
+		blog(LOG_INFO, "Starting stream due to OutputTimer");
 		obs_frontend_streaming_start();
 	} else if (streamingAlreadyActive) {
 		StreamTimerStart();
 		streamingAlreadyActive = false;
 	} else if (obs_frontend_streaming_active()) {
+		blog(LOG_INFO, "Stopping stream due to OutputTimer");
 		obs_frontend_streaming_stop();
 	}
 }
@@ -50,18 +54,20 @@ void OutputTimer::StreamingTimerButton()
 void OutputTimer::RecordingTimerButton()
 {
 	if (!obs_frontend_recording_active()) {
+		blog(LOG_INFO, "Starting recording due to OutputTimer");
 		obs_frontend_recording_start();
 	} else if (recordingAlreadyActive) {
 		RecordTimerStart();
 		recordingAlreadyActive = false;
 	} else if (obs_frontend_recording_active()) {
+		blog(LOG_INFO, "Stopping recording due to OutputTimer");
 		obs_frontend_recording_stop();
 	}
 }
 
 void OutputTimer::StreamTimerStart()
 {
-	if (!isVisible()) {
+	if (!isVisible() && ui->autoStartStreamTimer->isChecked() == false) {
 		streamingAlreadyActive = true;
 		return;
 	}
@@ -88,14 +94,14 @@ void OutputTimer::StreamTimerStart()
 
 	streamingTimer->start();
 	streamingTimerDisplay->start(1000);
-	ui->outputTimerStream->setText(tr("Stop"));
+	ui->outputTimerStream->setText(obs_module_text("Stop"));
 
 	UpdateStreamTimerDisplay();
 }
 
 void OutputTimer::RecordTimerStart()
 {
-	if (!isVisible()) {
+	if (!isVisible() && ui->autoStartRecordTimer->isChecked() == false) {
 		recordingAlreadyActive = true;
 		return;
 	}
@@ -122,7 +128,7 @@ void OutputTimer::RecordTimerStart()
 
 	recordingTimer->start();
 	recordingTimerDisplay->start(1000);
-	ui->outputTimerRecord->setText(tr("Stop"));
+	ui->outputTimerRecord->setText(obs_module_text("Stop"));
 
 	UpdateRecordTimerDisplay();
 }
@@ -137,7 +143,7 @@ void OutputTimer::StreamTimerStop()
 	if (streamingTimer->isActive())
 		streamingTimer->stop();
 
-	ui->outputTimerStream->setText(tr("Start"));
+	ui->outputTimerStream->setText(obs_module_text("Start"));
 
 	if (streamingTimerDisplay->isActive())
 		streamingTimerDisplay->stop();
@@ -155,7 +161,7 @@ void OutputTimer::RecordTimerStop()
 	if (recordingTimer->isActive())
 		recordingTimer->stop();
 
-	ui->outputTimerRecord->setText(tr("Start"));
+	ui->outputTimerRecord->setText(obs_module_text("Start"));
 
 	if (recordingTimerDisplay->isActive())
 		recordingTimerDisplay->stop();
@@ -202,11 +208,13 @@ void OutputTimer::ShowHideDialog()
 
 void OutputTimer::EventStopStreaming()
 {
+	blog(LOG_INFO, "Stopping stream due to OutputTimer timeout");
 	obs_frontend_streaming_stop();
 }
 
 void OutputTimer::EventStopRecording()
 {
+	blog(LOG_INFO, "Stopping recording due to OutputTimer timeout");
 	obs_frontend_recording_stop();
 }
 
@@ -228,6 +236,11 @@ static void SaveOutputTimer(obs_data_t *save_data, bool saving, void *)
 				ot->ui->recordingTimerMinutes->value());
 		obs_data_set_int(obj, "recordTimerSeconds",
 				ot->ui->recordingTimerSeconds->value());
+
+		obs_data_set_bool(obj, "autoStartStreamTimer",
+				ot->ui->autoStartStreamTimer->isChecked());
+		obs_data_set_bool(obj, "autoStartRecordTimer",
+				ot->ui->autoStartRecordTimer->isChecked());
 
 		obs_data_set_obj(save_data, "output-timer", obj);
 
@@ -252,6 +265,11 @@ static void SaveOutputTimer(obs_data_t *save_data, bool saving, void *)
 				obs_data_get_int(obj, "recordTimerMinutes"));
 		ot->ui->recordingTimerSeconds->setValue(
 				obs_data_get_int(obj, "recordTimerSeconds"));
+
+		ot->ui->autoStartStreamTimer->setChecked(
+				obs_data_get_bool(obj, "autoStartStreamTimer"));
+		ot->ui->autoStartRecordTimer->setChecked(
+				obs_data_get_bool(obj, "autoStartRecordTimer"));
 
 		obs_data_release(obj);
 	}

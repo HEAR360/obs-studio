@@ -37,6 +37,8 @@
 #include <util/windows/ComPtr.hpp>
 #include <util/windows/HRError.hpp>
 
+// #define DISASSEMBLE_SHADERS
+
 struct shader_var;
 struct shader_sampler;
 struct gs_vertex_shader;
@@ -360,6 +362,7 @@ struct gs_texture_2d : gs_texture {
 	void InitRenderTargets();
 	void BackupTexture(const uint8_t **data);
 
+	void RebuildSharedTextureFallback();
 	inline void Rebuild(ID3D11Device *dev);
 
 	inline void Release()
@@ -558,6 +561,8 @@ struct gs_duplicator : gs_obj {
 	ComPtr<IDXGIOutputDuplication> duplicator;
 	gs_texture_2d *texture;
 	int idx;
+	long refs;
+	bool updated;
 
 	void Start();
 
@@ -786,6 +791,9 @@ struct gs_device {
 	gs_pixel_shader             *curPixelShader = nullptr;
 	gs_swap_chain               *curSwapChain = nullptr;
 
+	gs_vertex_buffer            *lastVertexBuffer = nullptr;
+	gs_vertex_shader            *lastVertexShader = nullptr;
+
 	bool                        zstencilStateChanged = true;
 	bool                        rasterStateChanged = true;
 	bool                        blendStateChanged = true;
@@ -801,6 +809,9 @@ struct gs_device {
 	D3D11_PRIMITIVE_TOPOLOGY    curToplogy;
 
 	pD3DCompile                 d3dCompile = nullptr;
+#ifdef DISASSEMBLE_SHADERS
+	pD3DDisassemble             d3dDisassemble = nullptr;
+#endif
 
 	gs_rect                     viewport;
 
@@ -822,6 +833,8 @@ struct gs_device {
 	void UpdateZStencilState();
 	void UpdateRasterState();
 	void UpdateBlendState();
+
+	void LoadVertexBufferData();
 
 	inline void CopyTex(ID3D11Texture2D *dst,
 			uint32_t dst_x, uint32_t dst_y,

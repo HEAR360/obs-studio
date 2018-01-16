@@ -8,7 +8,7 @@ if(COPIED_DEPENDENCIES)
 	return()
 endif()
 
-option(COPY_DEPENDENCIES "Automaticaly try copying all dependencies" OFF)
+option(COPY_DEPENDENCIES "Automaticaly try copying all dependencies" ON)
 if(NOT COPY_DEPENDENCIES)
 	return()
 endif()
@@ -18,12 +18,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
 else()
 	set(_bin_suffix 32)
 endif()
-
-find_package(Libavcodec QUIET)
-find_package(Libx264 QUIET)
-find_package(Libfdk QUIET)
-find_package(ssl QUIET)
-find_package(Qt5Core QUIET)
 
 file(GLOB FFMPEG_BIN_FILES
 	"${FFMPEG_avcodec_INCLUDE_DIR}/../bin/avcodec-*.dll"
@@ -128,6 +122,16 @@ file(GLOB CURL_BIN_FILES
 	"${CURL_INCLUDE_DIR}/bin/curl*.dll"
 	)
 
+file(GLOB LUA_BIN_FILES
+	"${LUAJIT_INCLUDE_DIR}/../../bin${_bin_suffix}/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/../../bin/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/../bin${_bin_suffix}/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/../bin/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/bin${_bin_suffix}/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/bin/lua*.dll"
+	"${LUAJIT_INCLUDE_DIR}/lua*.dll"
+	)
+
 if (ZLIB_LIB)
 	GET_FILENAME_COMPONENT(ZLIB_BIN_PATH ${ZLIB_LIB} PATH)
 endif()
@@ -172,6 +176,7 @@ set(ALL_BASE_BIN_FILES
 	${FFMPEG_BIN_FILES}
 	${X264_BIN_FILES}
 	${CURL_BIN_FILES}
+	${LUA_BIN_FILES}
 	${SSL_BIN_FILES}
 	${ZLIB_BIN_FILES}
 	${LIBFDK_BIN_FILES}
@@ -205,6 +210,7 @@ message(STATUS "x264 files: ${X264_BIN_FILES}")
 message(STATUS "Libfdk files: ${LIBFDK_BIN_FILES}")
 message(STATUS "Freetype files: ${FREETYPE_BIN_FILES}")
 message(STATUS "curl files: ${CURL_BIN_FILES}")
+message(STATUS "lua files: ${LUA_BIN_FILES}")
 message(STATUS "ssl files: ${SSL_BIN_FILES}")
 message(STATUS "zlib files: ${ZLIB_BIN_FILES}")
 message(STATUS "QT Debug files: ${QT_DEBUG_BIN_FILES}")

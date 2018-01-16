@@ -149,6 +149,9 @@ void gs_shader::BuildConstantBuffer()
 			continue;
 		}
 
+		if (param.arrayCount)
+			size *= param.arrayCount;
+
 		/* checks to see if this constant needs to start at a new
 		 * register */
 		if (size && (constantSize & 15) != 0) {
@@ -201,6 +204,22 @@ void gs_shader::Compile(const char *shaderString, const char *file,
 		else
 			throw HRError("Failed to compile shader", hr);
 	}
+
+#ifdef DISASSEMBLE_SHADERS
+	ComPtr<ID3D10Blob> asmBlob;
+
+	if (!device->d3dDisassemble)
+		return;
+
+	hr = device->d3dDisassemble((*shader)->GetBufferPointer(),
+			(*shader)->GetBufferSize(), 0, nullptr, &asmBlob);
+
+	if (SUCCEEDED(hr) && !!asmBlob && asmBlob->GetBufferSize()) {
+		blog(LOG_INFO, "=============================================");
+		blog(LOG_INFO, "Disassembly output for shader '%s':\n%s",
+				file, asmBlob->GetBufferPointer());
+	}
+#endif
 }
 
 inline void gs_shader::UpdateParam(vector<uint8_t> &constData,
@@ -271,6 +290,8 @@ void gs_shader::UploadParams()
 
 void gs_shader_destroy(gs_shader_t *shader)
 {
+	if (shader && shader->device->lastVertexShader == shader)
+		shader->device->lastVertexShader = nullptr;
 	delete shader;
 }
 

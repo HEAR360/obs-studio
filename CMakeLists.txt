@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8.12)
 
 project(obs-studio)
 
+option(BUILD_CAPTIONS "Build captions" FALSE)
+
 if(WIN32)
 	if (QTDIR OR DEFINED ENV{QTDIR} OR DEFINED ENV{QTDIR32} OR DEFINED ENV{QTDIR64})
 		# Qt path set by user or env var
@@ -18,6 +20,7 @@ if(WIN32)
 endif()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+set(ENABLE_SCRIPTING OFF CACHE BOOL "" FORCE)
 
 include(ObsHelpers)
 include(ObsCpack)
@@ -60,7 +63,7 @@ elseif(MSVC)
 endif()
 
 if(WIN32)
-	add_definitions(-DUNICODE -D_UNICODE)
+	add_definitions(-DUNICODE -D_UNICODE -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS)
 endif()
 
 if(MSVC)
@@ -101,8 +104,14 @@ option(BUILD_TESTS "Build test directory (includes test sources and possibly a p
 mark_as_advanced(BUILD_TESTS)
 
 if(NOT INSTALLER_RUN)
-	add_subdirectory(deps)
+	option(ENABLE_UI "Enables the OBS user interfaces" ON)
+	if(DISABLE_UI OR NOT ENABLE_UI)
+		set(UI_ENABLED FALSE)
+	else()
+		set(UI_ENABLED TRUE)
+	endif()
 
+	add_subdirectory(deps)
 
 	if(WIN32)
 		add_subdirectory(libobs-d3d11)

@@ -31,15 +31,44 @@ inline void gs_index_buffer::Rebuild(ID3D11Device *dev)
 		throw HRError("Failed to create buffer", hr);
 }
 
+void gs_texture_2d::RebuildSharedTextureFallback()
+{
+	td                  = {};
+	td.Width            = 2;
+	td.Height           = 2;
+	td.MipLevels        = 1;
+	td.Format           = DXGI_FORMAT_B8G8R8A8_UNORM;
+	td.ArraySize        = 1;
+	td.SampleDesc.Count = 1;
+	td.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
+
+	width      = td.Width;
+	height     = td.Height;
+	dxgiFormat = td.Format;
+	levels     = 1;
+
+	resourceDesc = {};
+	resourceDesc.Format              = td.Format;
+	resourceDesc.ViewDimension       = D3D11_SRV_DIMENSION_TEXTURE2D;
+	resourceDesc.Texture2D.MipLevels = 1;
+
+	isShared = false;
+}
+
 inline void gs_texture_2d::Rebuild(ID3D11Device *dev)
 {
 	HRESULT hr;
 	if (isShared) {
 		hr = dev->OpenSharedResource((HANDLE)(uintptr_t)sharedHandle,
 				__uuidof(ID3D11Texture2D), (void**)&texture);
-		if (FAILED(hr))
-			throw HRError("Failed to open shared 2D texture", hr);
-	} else {
+		if (FAILED(hr)) {
+			blog(LOG_WARNING, "Failed to rebuild shared texture: ",
+					"0x%08lX", hr);
+			RebuildSharedTextureFallback();
+		}
+	}
+
+	if (!isShared) {
 		hr = dev->CreateTexture2D(&td,
 				data.size() ? srd.data() : nullptr,
 				&texture);
@@ -276,7 +305,11 @@ try {
 			((gs_pixel_shader*)obj)->Rebuild(dev);
 			break;
 		case gs_type::gs_duplicator:
-			((gs_duplicator*)obj)->Start();
+			try {
+				((gs_duplicator*)obj)->Start();
+			} catch (...) {
+				((gs_duplicator*)obj)->Release();
+			}
 			break;
 		case gs_type::gs_swap_chain:
 			((gs_swap_chain*)obj)->Rebuild(dev);
